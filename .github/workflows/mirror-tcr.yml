@@ -1,0 +1,34 @@
+name: Mirror Open3DBench Place to Tencent TCR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  mirror-tcr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.1
+
+      - name: Login to Tencent Container Registry
+        run: |
+          echo "${{ secrets.TCR_PASSWORD }}" |
+            crane auth login ccr.ccs.tencentyun.com \
+              -u "${{ secrets.TCR_USERNAME }}" \
+              --password-stdin
+
+      - name: Copy image to Tencent TCR
+        run: |
+          crane copy \
+            ghcr.io/wwwwhb/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
+            ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
+
+      - name: Verify destination digest
+        run: |
+          crane digest \
+            ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
