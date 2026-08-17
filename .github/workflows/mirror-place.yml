@@ -1,38 +1,49 @@
-name: Mirror Open3DBench Place Image
+name: Build Split Open3DBench Place Download
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  packages: write
+  contents: write
+  packages: read
 
 jobs:
-  mirror:
+  build-release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Install crane
         uses: imjasonh/setup-crane@v0.1
 
-      - name: Login to GitHub Container Registry
+      - name: Pull image from GHCR
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" |
-            crane auth login ghcr.io \
-              -u "${{ github.actor }}" \
-              --password-stdin
+          crane pull \
+            --platform=linux/amd64 \
+            ghcr.io/wwwwhb/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
+            open3dbench-place.tar
 
-      - name: Copy Open3DBench place image
+      - name: Split image and generate checksums
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          sha256sum open3dbench-place.tar > SHA256SUMS
+          split -b 1400M -d -a 2 \
+            open3dbench-place.tar \
+            open3dbench-place.part-
+          sha256sum open3dbench-place.part-* >> SHA256SUMS
+          ls -lh open3dbench-place.part-* SHA256SUMS
 
-          crane copy \
-            docker.io/shiyunqi/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
-            ghcr.io/${OWNER}/open3dbench:place
-
-      - name: Verify copied image
+      - name: Publish files as GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          gh release delete place-transfer-v1 \
+            --repo "${{ github.repository }}" \
+            --cleanup-tag \
+            --yes || true
 
-          echo "Copied image digest:"
-          crane digest ghcr.io/${OWNER}/open3dbench:place
+          gh release create place-transfer-v1 \
+            open3dbench-place.part-* \
+            SHA256SUMS \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Open3DBench Place Image" \
+            --notes "Split Docker image archive for resumable transfer."
