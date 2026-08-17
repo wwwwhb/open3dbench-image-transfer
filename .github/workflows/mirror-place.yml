@@ -1,0 +1,38 @@
+name: Mirror Open3DBench Place Image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.1
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" |
+            crane auth login ghcr.io \
+              -u "${{ github.actor }}" \
+              --password-stdin
+
+      - name: Copy Open3DBench place image
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+          crane copy \
+            docker.io/shiyunqi/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
+            ghcr.io/${OWNER}/open3dbench:place
+
+      - name: Verify copied image
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+          echo "Copied image digest:"
+          crane digest ghcr.io/${OWNER}/open3dbench:place
