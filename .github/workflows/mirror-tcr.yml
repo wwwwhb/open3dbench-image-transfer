@@ -13,51 +13,30 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: Install crane
-        uses: imjasonh/setup-crane@v0.1
+      - name: Install regctl
+        uses: regclient/actions/regctl-installer@main
+        with:
+          release: v0.11.5
 
       - name: Login to Tencent Container Registry
         run: |
           echo "${{ secrets.TCR_PASSWORD }}" |
-            crane auth login ccr.ccs.tencentyun.com \
+            regctl registry login ccr.ccs.tencentyun.com \
               -u "${{ secrets.TCR_USERNAME }}" \
-              --password-stdin
+              --pass-stdin
 
-      - name: Copy image to Tencent TCR with retries
-        env:
-          GODEBUG: http2client=0
+      - name: Copy image with chunked upload support
         run: |
-          set +e
-
-          for attempt in 1 2 3 4; do
-            echo "===== Copy attempt ${attempt}/4 ====="
-
-            crane copy \
-              --platform=linux/amd64 \
-              ghcr.io/wwwwhb/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
-              ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
-
-            result=$?
-
-            if [ "$result" -eq 0 ]; then
-              echo "Image copy completed."
-              exit 0
-            fi
-
-            echo "Attempt ${attempt} failed with exit code ${result}."
-            echo "Waiting 60 seconds before retrying..."
-            sleep 60
-          done
-
-          echo "All copy attempts failed."
-          exit 1
+          regctl image copy \
+            --platform linux/amd64 \
+            ghcr.io/wwwwhb/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
+            ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place \
+            -v info
 
       - name: Verify destination digest
-        env:
-          GODEBUG: http2client=0
         run: |
           DEST_DIGEST="$(
-            crane digest \
+            regctl image digest \
               ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
           )"
 
