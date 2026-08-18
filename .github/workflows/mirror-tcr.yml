@@ -10,6 +10,7 @@ permissions:
 jobs:
   mirror-tcr:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
 
     steps:
       - name: Install crane
@@ -22,13 +23,45 @@ jobs:
               -u "${{ secrets.TCR_USERNAME }}" \
               --password-stdin
 
-      - name: Copy image to Tencent TCR
+      - name: Copy image to Tencent TCR with retries
+        env:
+          GODEBUG: http2client=0
         run: |
-          crane copy \
-            ghcr.io/wwwwhb/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
-            ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
+          set +e
+
+          for attempt in 1 2 3 4; do
+            echo "===== Copy attempt ${attempt}/4 ====="
+
+            crane copy \
+              --platform=linux/amd64 \
+              ghcr.io/wwwwhb/open3dbench@sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e \
+              ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
+
+            result=$?
+
+            if [ "$result" -eq 0 ]; then
+              echo "Image copy completed."
+              exit 0
+            fi
+
+            echo "Attempt ${attempt} failed with exit code ${result}."
+            echo "Waiting 60 seconds before retrying..."
+            sleep 60
+          done
+
+          echo "All copy attempts failed."
+          exit 1
 
       - name: Verify destination digest
+        env:
+          GODEBUG: http2client=0
         run: |
-          crane digest \
-            ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
+          DEST_DIGEST="$(
+            crane digest \
+              ccr.ccs.tencentyun.com/wwwwhb-open3dbench/open3dbench:place
+          )"
+
+          echo "Destination digest: ${DEST_DIGEST}"
+
+          test "${DEST_DIGEST}" = \
+            "sha256:69192fe510ab56878c0cbb0e275c76f40ab6f7a7e9dc112c4b9c3f23cf62d04e"
